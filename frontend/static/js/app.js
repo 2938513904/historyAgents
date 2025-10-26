@@ -586,6 +586,9 @@ function loadChatroomMessages(chatroomId) {
                 const statusElement = document.getElementById('chatroom-status');
                 statusElement.textContent = data.status;
                 statusElement.className = data.status;
+                
+                // 根据聊天室状态初始化按钮状态
+                updateButtonStates(data.status);
             }
             
             // 更新参与历史人物
@@ -633,6 +636,34 @@ function connectWebSocket(chatroomId) {
                 statusElement.textContent = message.status;
                 statusElement.className = message.status;
             }
+            
+            // 更新按钮状态
+            updateButtonStates(message.status);
+            
+            // 如果讨论完成，显示提示信息
+            if (message.status === 'completed') {
+                showMessage('🎉 本轮讨论已圆满结束！各位历史人物的精彩观点已经充分交流。', 'success');
+                
+                // 添加系统消息到聊天记录
+                const completionMessage = {
+                    type: 'system',
+                    sender: '系统',
+                    content: '📝 讨论总结：本轮讨论已圆满结束，感谢各位历史人物的精彩发言！',
+                    timestamp: new Date().toISOString()
+                };
+                displayMessage(completionMessage);
+            } else if (message.status === 'stopped') {
+                showMessage('⏹️ 讨论已手动结束', 'info');
+                
+                // 添加系统消息到聊天记录
+                const stopMessage = {
+                    type: 'system',
+                    sender: '系统',
+                    content: '⏹️ 讨论已被手动结束',
+                    timestamp: new Date().toISOString()
+                };
+                displayMessage(stopMessage);
+            }
         } else if (message.type === 'room_info') {
             // 更新整个聊天室信息
             if (message.chat_room) {
@@ -640,6 +671,9 @@ function connectWebSocket(chatroomId) {
                 document.getElementById('chatroom-topic').textContent = chatroom.topic;
                 document.getElementById('chatroom-status').textContent = chatroom.status;
                 document.getElementById('chatroom-status').className = chatroom.status;
+                
+                // 更新按钮状态
+                updateButtonStates(chatroom.status);
                 
                 // 更新参与历史人物
                 const agentsContainer = document.getElementById('chatroom-agents');
@@ -671,24 +705,22 @@ function connectWebSocket(chatroomId) {
         showMessage('WebSocket连接失败', 'error');
     };
     
-    // 开始讨论按钮事件
+    // 按钮事件绑定
     document.getElementById('start-discussion').onclick = function() {
         startDiscussion();
     };
     
-    document.getElementById('stop-discussion').onclick = function() {
-        stopDiscussion();
+    document.getElementById('continue-discussion').onclick = function() {
+        continueDiscussion();
+    };
+    
+    document.getElementById('end-discussion').onclick = function() {
+        endDiscussion();
     };
 }
 
 function startDiscussion() {
-    const input = document.getElementById('chat-input').value.trim();
-    if (!input) {
-        showMessage('请输入讨论话题', 'error');
-        return;
-    }
-    
-    // 先调用后端的start接口来激活聊天室
+    // 直接开始讨论，使用聊天室主题作为讨论话题
     fetch(`/api/chatrooms/${currentChatroomId}/start`, {
         method: 'POST'
     })
@@ -701,23 +733,17 @@ function startDiscussion() {
             statusElement.className = data.status;
         }
         
-        // 然后通过WebSocket发送消息
+        // 通过WebSocket发送开始消息
         if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
             wsConnection.send(JSON.stringify({
                 type: 'start',
-                message: input
+                message: '开始讨论主题'
             }));
             
-            document.getElementById('start-discussion').style.display = 'none';
-            document.getElementById('stop-discussion').style.display = 'inline-block';
-            document.getElementById('chat-input').value = '';
+            // 更新按钮状态
+            updateButtonStates('running');
             
-            // 显示用户消息
-            displayMessage({
-                sender: '用户',
-                content: input,
-                timestamp: new Date().toISOString()
-            });
+            showMessage('讨论已开始', 'success');
         }
     })
     .catch(error => {
@@ -726,14 +752,142 @@ function startDiscussion() {
     });
 }
 
-function stopDiscussion() {
-    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
-        wsConnection.send(JSON.stringify({
-            type: 'stop'
-        }));
+function continueDiscussion() {
+    // 继续讨论，先启动聊天室，然后发送继续消息
+    fetch(`/api/chatrooms/${currentChatroomId}/start`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 更新聊天室状态
+        const statusElement = document.getElementById('chatroom-status');
+        if (statusElement) {
+            statusElement.textContent = data.status;
+            statusElement.className = data.status;
+        }
         
-        document.getElementById('start-discussion').style.display = 'inline-block';
-        document.getElementById('stop-discussion').style.display = 'none';
+        // 通过WebSocket发送继续消息
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+            wsConnection.send(JSON.stringify({
+                type: 'continue',
+                message: '基于之前的讨论内容，请各位继续深入交流'
+            }));
+            
+            // 更新按钮状态
+            updateButtonStates('running');
+            
+            showMessage('💬 讨论继续进行中，各位历史人物将基于之前的内容进行更深入的交流', 'success');
+            
+            // 添加系统消息到聊天记录 - 只保留第一个提示
+            const continueMessage = {
+                type: 'system',
+                sender: '系统',
+                content: '💬 继续讨论：各位历史人物将基于之前的讨论内容进行更深入的交流',
+                timestamp: new Date().toISOString()
+            };
+            displayMessage(continueMessage);
+        }
+    })
+    .catch(error => {
+        console.error('继续讨论失败:', error);
+        showMessage('继续讨论失败，请稍后重试', 'error');
+    });
+}
+
+function endDiscussion() {
+    // 发送停止请求到后端API
+    fetch(`/api/chatrooms/${currentChatroomId}/stop`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 更新聊天室状态
+        const statusElement = document.getElementById('chatroom-status');
+        if (statusElement) {
+            statusElement.textContent = data.status;
+            statusElement.className = data.status;
+        }
+        
+        // 通过WebSocket发送停止消息
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+            wsConnection.send(JSON.stringify({
+                type: 'stop'
+            }));
+        }
+        
+        // 更新按钮状态
+        updateButtonStates('stopped');
+        
+        showMessage('⏹️ 讨论已结束', 'success');
+        
+        // 添加系统消息到聊天记录 - 明确的结束讨论提示
+        const endMessage = {
+            type: 'system',
+            sender: '系统',
+            content: '⏹️ 讨论结束：本次讨论已结束，感谢各位历史人物的精彩发言！',
+            timestamp: new Date().toISOString()
+        };
+        displayMessage(endMessage);
+    })
+    .catch(error => {
+        console.error('结束讨论失败:', error);
+        // 即使API调用失败，也尝试通过WebSocket发送停止消息
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+            wsConnection.send(JSON.stringify({
+                type: 'stop'
+            }));
+            
+            updateButtonStates('stopped');
+            showMessage('⏹️ 讨论已结束', 'success');
+            
+            // 添加系统消息到聊天记录 - 明确的结束讨论提示
+            const endMessage = {
+                type: 'system',
+                sender: '系统',
+                content: '⏹️ 讨论结束：本次讨论已结束，感谢各位历史人物的精彩发言！',
+                timestamp: new Date().toISOString()
+            };
+            displayMessage(endMessage);
+        } else {
+            showMessage('结束讨论失败，请稍后重试', 'error');
+        }
+    });
+}
+
+function updateButtonStates(status) {
+    const startBtn = document.getElementById('start-discussion');
+    const continueBtn = document.getElementById('continue-discussion');
+    const endBtn = document.getElementById('end-discussion');
+    
+    if (!startBtn || !continueBtn || !endBtn) {
+        return; // 如果按钮不存在，直接返回
+    }
+    
+    // 重置所有按钮状态
+    startBtn.disabled = false;
+    continueBtn.disabled = false;
+    endBtn.disabled = false;
+    
+    if (status === 'running') {
+        // 讨论进行中：禁用开始按钮，启用继续和结束按钮
+        startBtn.disabled = true;
+        continueBtn.disabled = false;
+        endBtn.disabled = false;
+    } else if (status === 'stopped') {
+        // 讨论已停止：启用开始和继续按钮，启用结束按钮（允许随时结束）
+        startBtn.disabled = false;
+        continueBtn.disabled = false;
+        endBtn.disabled = false;
+    } else if (status === 'completed') {
+        // 讨论已完成：启用开始和继续按钮，启用结束按钮（允许随时结束）
+        startBtn.disabled = false;
+        continueBtn.disabled = false;
+        endBtn.disabled = false;
+    } else {
+        // pending状态或其他状态：启用开始按钮，禁用继续按钮，启用结束按钮（允许随时结束）
+        startBtn.disabled = false;
+        continueBtn.disabled = true;
+        endBtn.disabled = false;
     }
 }
 
