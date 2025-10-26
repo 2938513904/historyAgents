@@ -1,0 +1,48 @@
+# AI多智能体系统配置文件
+server:
+  # 服务器端口号
+  port: 8080
+  # 服务器地址
+  host: "0.0.0.0"
+
+# 数据库配置
+database:
+  # 数据库类型
+  type: "mysql"
+  # 数据库主机地址 (Docker环境使用服务名)
+  host: "mysql"
+  # 数据库端口
+  port: 3306
+  # 数据库用户名
+  username: "aiuser"
+  # 数据库密码
+  password: "aipassword123"
+  # 数据库名称
+  dbname: "ai_agents"
+  # 字符集
+  charset: "utf8mb4"
+  # 时区
+  timezone: "Local"
+  # 连接池配置
+  max_idle_conns: 10
+  max_open_conns: 100
+
+# API配置
+api:
+  # DashScope API Key
+  api_key: "sk-2b32164c932c4a6e9e5ce6a519ccecfb"
+  # API基础URL
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/"
+  # 默认模型
+  model: "qwen-plus"
+  # DashScope端点
+  endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+
+# 日志配置
+log:
+  # 日志级别 (debug, info, warn, error)
+  level: "info"
+  # 日志文件路径
+  file: "logs/app.log"
+  # 是否输出到控制台
+  console: true

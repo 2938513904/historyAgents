@@ -38,7 +38,7 @@ func (ac *APIController) TestAPIConnection(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"message":  "API连接测试成功",
-		"model":    config.HardcodedModel,
+		"model":    config.GetModel(),
 		"provider": "DashScope (阿里云)",
 		"response": response,
 	})
@@ -59,18 +59,9 @@ func (ac *APIController) TestDashScopeAPI(c *gin.Context) {
 		return
 	}
 
-	// 保存原始的模型配置
-	originalModel := config.HardcodedModel
-	if requestData.Model != "" {
-		config.HardcodedModel = requestData.Model
-	}
-
 	// 调用阿里云API
-	// log.Printf("测试阿里云DashScope API，提示词: %s, 模型: %s", requestData.Prompt, config.HardcodedModel)
+	// log.Printf("测试阿里云DashScope API，提示词: %s, 模型: %s", requestData.Prompt, model)
 	response, err := utils.CallDashScopeAPI(requestData.Prompt)
-
-	// 恢复原始模型配置
-	config.HardcodedModel = originalModel
 
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{

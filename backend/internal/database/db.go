@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"multiagent-chat/internal/model"
+	"multiagent-chat/internal/config"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -15,8 +16,8 @@ var DB *gorm.DB
 
 // InitDatabase 初始化数据库
 func InitDatabase() error {
-	// MySQL连接配置
-	dsn := "root:root@tcp(127.0.0.1:3306)/ai_agents?charset=utf8mb4&parseTime=True&loc=Local&collation=utf8mb4_unicode_ci&interpolateParams=true&readTimeout=10s&writeTimeout=10s"
+	// 使用配置文件中的MySQL连接配置
+	dsn := config.AppConfig.GetDSN()
 
 	var err error
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -30,9 +31,9 @@ func InitDatabase() error {
 		return fmt.Errorf("获取底层数据库连接失败: %v", err)
 	}
 
-	// 设置连接池参数
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
+	// 设置连接池参数（从配置文件读取）
+	sqlDB.SetMaxIdleConns(config.AppConfig.Database.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(config.AppConfig.Database.MaxOpenConns)
 
 	// 设置数据库编码为UTF-8
 	if err := DB.Exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci").Error; err != nil {
@@ -57,6 +58,9 @@ func InitDatabase() error {
 		return fmt.Errorf("数据库迁移失败: %v", err)
 	}
 
-	log.Println("数据库初始化成功（MySQL模式）")
+	log.Printf("数据库初始化成功（MySQL模式）- 连接到: %s:%d/%s", 
+		config.AppConfig.Database.Host, 
+		config.AppConfig.Database.Port, 
+		config.AppConfig.Database.DBName)
 	return nil
 }

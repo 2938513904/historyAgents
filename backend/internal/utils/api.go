@@ -16,7 +16,7 @@ import (
 func CallDashScopeAPI(prompt string) (string, error) {
 	// 构造请求体
 	requestBody := map[string]interface{}{
-		"model": config.HardcodedModel,
+		"model": config.GetModel(),
 		"input": map[string]interface{}{
 			"prompt": prompt,
 		},
@@ -33,13 +33,13 @@ func CallDashScopeAPI(prompt string) (string, error) {
 	}
 
 	// 创建HTTP请求
-	req, err := http.NewRequest("POST", config.DashScopeEndpoint, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", config.GetEndpoint(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("创建HTTP请求失败: %v", err)
 	}
 
 	// 设置请求头
-	req.Header.Set("Authorization", "Bearer "+config.HardcodedAPIKey)
+	req.Header.Set("Authorization", "Bearer "+config.GetAPIKey())
 	req.Header.Set("Content-Type", "application/json")
 	// 移除SSE模式，使用标准的JSON响应
 	// req.Header.Set("X-DashScope-SSE", "enable")
