@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>阿里云DashScope API测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .response-content {
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>阿里云DashScope API测试</h1>
+        
+        <form id="test-form">
+            <div class="form-group">
+                <label for="prompt">提示词:</label>
+                <textarea id="prompt" name="prompt" placeholder="请输入要发送给AI的提示词">Hello, this is a test message. Please respond with a short greeting.</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="model">模型名称:</label>
+                <input type="text" id="model" name="model" value="qwen-plus" placeholder="例如: qwen-plus">
+            </div>
+            
+            <button type="submit" id="test-btn">测试API调用</button>
+        </form>
+        
+        <div id="result" class="result">
+            <div id="result-message"></div>
+            <div id="response-content" class="response-content" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // 显示结果
+        function showResult(message, type, responseContent = null) {
+            const resultDiv = document.getElementById('result');
+            const messageDiv = document.getElementById('result-message');
+            const responseContentDiv = document.getElementById('response-content');
+            
+            messageDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+            
+            if (responseContent) {
+                responseContentDiv.textContent = responseContent;
+                responseContentDiv.style.display = 'block';
+            } else {
+                responseContentDiv.style.display = 'none';
+            }
+        }
+        
+        // 表单提交处理
+        document.getElementById('test-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const prompt = document.getElementById('prompt').value;
+            const model = document.getElementById('model').value;
+            
+            // 验证必填字段
+            if (!prompt) {
+                showResult('请输入提示词', 'error');
+                return;
+            }
+            
+            // 显示测试状态
+            const testBtn = document.getElementById('test-btn');
+            const originalText = testBtn.textContent;
+            testBtn.textContent = '测试中...';
+            testBtn.disabled = true;
+            
+            console.log('测试阿里云DashScope API:', { prompt, model });
+            showResult('正在测试连接，请稍候...', 'info');
+            
+            try {
+                // 发送测试请求到我们自己的后端API
+                const response = await fetch('/api/test-dashscope', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        model: model
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('测试结果:', data);
+                
+                if (data.success) {
+                    showResult(`API调用成功: ${data.message}`, 'success', data.response);
+                } else {
+                    showResult(`API调用失败: ${data.message}`, 'error', data.response);
+                }
+            } catch (error) {
+                console.error('测试连接失败:', error);
+                showResult(`测试连接失败: ${error.message}`, 'error');
+            } finally {
+                // 恢复按钮状态
+                testBtn.textContent = originalText;
+                testBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
