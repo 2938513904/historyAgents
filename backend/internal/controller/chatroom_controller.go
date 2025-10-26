@@ -9,6 +9,7 @@ import (
 
 	"multiagent-chat/internal/model"
 	"multiagent-chat/internal/utils"
+	"multiagent-chat/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,13 +18,15 @@ import (
 
 // ChatRoomController 聊天室控制器
 type ChatRoomController struct {
-	db *gorm.DB
+	db         *gorm.DB
+	wsManager  *websocket.Manager
 }
 
 // NewChatRoomController 创建聊天室控制器实例
-func NewChatRoomController(db *gorm.DB) *ChatRoomController {
+func NewChatRoomController(db *gorm.DB, wsManager *websocket.Manager) *ChatRoomController {
 	return &ChatRoomController{
-		db: db,
+		db:        db,
+		wsManager: wsManager,
 	}
 }
 
@@ -50,7 +53,7 @@ func (cc *ChatRoomController) CreateChatRoom(c *gin.Context) {
 	}
 
 	// 添加日志查看接收到的数据
-	// log.Printf("接收到创建聊天室请求 - Topic: %s, Agents: %v", requestData.Topic, requestData.Agents)
+	log.Printf("接收到创建聊天室请求 - Topic: %s, Agents: %v", requestData.Topic, requestData.Agents)
 
 	// 创建聊天室
 	chatRoom := model.ChatRoom{
@@ -62,23 +65,37 @@ func (cc *ChatRoomController) CreateChatRoom(c *gin.Context) {
 
 	// 保存聊天室到数据库
 	if err := cc.db.Create(&chatRoom).Error; err != nil {
+		log.Printf("创建聊天室失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建聊天室失败"})
 		return
 	}
+	
+	log.Printf("聊天室创建成功 - ID: %s, Topic: %s", chatRoom.ID, chatRoom.Topic)
 
 	// 关联智能体
 	if len(requestData.Agents) > 0 {
 		var agents []model.Agent
 		if err := cc.db.Where("id IN ?", requestData.Agents).Find(&agents).Error; err != nil {
+			log.Printf("查询智能体失败: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询智能体失败"})
 			return
 		}
 
 		// 使用Association方法关联智能体
 		if err := cc.db.Model(&chatRoom).Association("Agents").Append(agents); err != nil {
+			log.Printf("关联智能体失败: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "关联智能体失败"})
 			return
 		}
+		
+		log.Printf("智能体关联成功，数量: %d", len(agents))
+	}
+
+	// 重新加载聊天室数据以包含关联的智能体
+	if err := cc.db.Preload("Agents").First(&chatRoom, "id = ?", chatRoom.ID).Error; err != nil {
+		log.Printf("重新加载聊天室数据失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "重新加载聊天室数据失败"})
+		return
 	}
 
 	c.JSON(http.StatusCreated, chatRoom)
@@ -207,8 +224,12 @@ func (cc *ChatRoomController) simulateAgentDiscussion(chatRoomID string) {
 		"chat_room": chatRoom,
 	}
 	roomInfoJSON, _ := json.Marshal(roomInfoUpdate)
-	// 这里需要通过WebSocket广播消息，暂时打印日志
-	log.Printf("广播聊天室信息: %s", string(roomInfoJSON))
+	// 通过WebSocket广播消息
+	if cc.wsManager != nil {
+		cc.wsManager.BroadcastToRoom(chatRoomID, roomInfoJSON)
+	} else {
+		log.Printf("WebSocket管理器未初始化，无法广播聊天室信息: %s", string(roomInfoJSON))
+	}
 
 	// 获取聊天室的最后一条用户消息作为讨论主题
 	var lastUserMessage model.Message
@@ -242,7 +263,11 @@ func (cc *ChatRoomController) simulateAgentDiscussion(chatRoomID string) {
 
 		// 广播初始消息
 		messageJSON, _ := json.Marshal(initialMessage)
-		log.Printf("广播初始消息: %s", string(messageJSON))
+		if cc.wsManager != nil {
+			cc.wsManager.BroadcastToRoom(chatRoomID, messageJSON)
+		} else {
+			log.Printf("WebSocket管理器未初始化，无法广播初始消息: %s", string(messageJSON))
+		}
 	}
 
 	// 更新状态为运行中
@@ -258,7 +283,11 @@ func (cc *ChatRoomController) simulateAgentDiscussion(chatRoomID string) {
 		"status": "running",
 	}
 	statusJSON, _ := json.Marshal(statusUpdate)
-	log.Printf("广播状态更新: %s", string(statusJSON))
+	if cc.wsManager != nil {
+		cc.wsManager.BroadcastToRoom(chatRoomID, statusJSON)
+	} else {
+		log.Printf("WebSocket管理器未初始化，无法广播状态更新: %s", string(statusJSON))
+	}
 
 	// 获取聊天室关联的智能体
 	var agents []model.Agent
@@ -267,54 +296,140 @@ func (cc *ChatRoomController) simulateAgentDiscussion(chatRoomID string) {
 		return
 	}
 
-	// 为每个智能体生成回复
-	for _, agent := range agents {
-		// 检查状态
-		var currentChatRoom model.ChatRoom
-		if err := cc.db.Preload("Agents").First(&currentChatRoom, "id = ?", chatRoomID).Error; err != nil {
-			break
+	// 确保至少进行3轮对话
+	minRounds := 3
+	maxRounds := 5 // 设置最大轮数避免无限循环
+	
+	log.Printf("开始多轮讨论，智能体数量: %d, 最少轮数: %d", len(agents), minRounds)
+
+	for round := 1; round <= maxRounds; round++ {
+		log.Printf("开始第 %d 轮讨论", round)
+		
+		// 为每个智能体生成回复
+		for _, agent := range agents {
+			// 检查状态
+			var currentChatRoom model.ChatRoom
+			if err := cc.db.Preload("Agents").First(&currentChatRoom, "id = ?", chatRoomID).Error; err != nil {
+				log.Printf("获取聊天室状态失败: %v", err)
+				return
+			}
+			if currentChatRoom.Status != "running" {
+				log.Printf("聊天室状态已改变，停止讨论")
+				return
+			}
+
+			// 获取之前的对话历史，用于构建更有针对性的提示词
+			var previousMessages []model.Message
+			cc.db.Where("chat_room_id = ? AND type = ?", chatRoomID, "agent").
+				Order("timestamp desc"). // 改为降序，获取最新的消息
+				Limit(6). // 获取最近6条消息作为上下文，避免上下文过长
+				Find(&previousMessages)
+
+			// 构建包含上下文的提示词
+			var contextStr string
+			if len(previousMessages) > 0 && round > 1 {
+				contextStr = "\n\n最近的讨论内容："
+				// 反转消息顺序，按时间正序显示
+				for i := len(previousMessages) - 1; i >= 0; i-- {
+					msg := previousMessages[i]
+					// 避免智能体回应自己的话
+					if msg.AgentName != agent.Name {
+						contextStr += fmt.Sprintf("\n%s: %s", msg.AgentName, msg.Content)
+					}
+				}
+				contextStr += "\n\n请基于以上讨论内容，"
+			}
+
+			// 根据轮数和智能体角色调整提示词，使对话更有针对性
+			var roundPrompt string
+			switch round {
+			case 1:
+				roundPrompt = fmt.Sprintf("作为%s，请从你的专业角度发表初步观点，保持简洁有力。", agent.Role)
+			case 2:
+				if len(previousMessages) > 0 {
+					roundPrompt = "请进一步阐述你的观点，或对其他智能体的观点进行回应和补充。"
+				} else {
+					roundPrompt = "请进一步阐述你的观点，提供更多细节。"
+				}
+			case 3:
+				roundPrompt = "请总结你的核心观点，或提出新的思考角度和建议。"
+			default:
+				roundPrompt = "请继续深入讨论，提供更多见解、反思或实用建议。"
+			}
+
+			// 构建更丰富的提示词，包含角色定位、性格特点、讨论上下文和轮次指导
+			prompt := fmt.Sprintf(`你是一个%s，性格特点：%s。
+当前讨论话题：%s
+%s
+%s
+
+请注意：
+1. 保持你的角色特色和专业性
+2. 回应要有逻辑性和建设性
+3. 避免重复之前已经说过的内容
+4. 控制回应长度在100-200字之间`,
+				agent.Role, agent.Personality, topic, contextStr, roundPrompt)
+
+			// 调用阿里云DashScope API
+			log.Printf("第%d轮 - 调用阿里云DashScope API，智能体: %s", round, agent.Name)
+			content, err := utils.CallDashScopeAPI(prompt)
+
+			if err != nil {
+				log.Printf("阿里云API调用失败: %v", err)
+				content = fmt.Sprintf("%s暂时无法发言: %v", agent.Name, err)
+			}
+
+			// 创建消息
+			message := model.Message{
+				ID:         uuid.New().String(),
+				AgentID:    agent.ID,
+				AgentName:  agent.Name,
+				Content:    content,
+				Type:       "agent",
+				Timestamp:  time.Now(),
+				ChatRoomID: chatRoomID,
+			}
+
+			// 保存消息到数据库
+			if err := cc.db.Create(&message).Error; err != nil {
+				log.Printf("保存消息失败，聊天室ID: %s, 错误: %v", chatRoomID, err)
+				continue
+			}
+
+			// 广播消息
+			messageJSON, _ := json.Marshal(message)
+			if cc.wsManager != nil {
+				cc.wsManager.BroadcastToRoom(chatRoomID, messageJSON)
+			} else {
+				log.Printf("WebSocket管理器未初始化，无法广播智能体消息: %s", string(messageJSON))
+			}
+
+			// 延迟一下，模拟真实讨论节奏
+			time.Sleep(3 * time.Second)
 		}
-		if currentChatRoom.Status != "running" {
-			break
+
+		log.Printf("第 %d 轮讨论完成", round)
+		
+		// 在轮次之间稍作停顿
+		if round < maxRounds {
+			time.Sleep(2 * time.Second)
 		}
-
-		// 构建提示词
-		prompt := fmt.Sprintf("你是一个%s，性格特点：%s。当前讨论话题：%s。请发表你的观点，保持简洁有力。",
-			agent.Role, agent.Personality, topic)
-
-		// 调用阿里云DashScope API
-		log.Printf("调用阿里云DashScope API，智能体: %s, 提示词: %s", agent.Name, prompt)
-		content, err := utils.CallDashScopeAPI(prompt)
-
-		if err != nil {
-			log.Printf("阿里云API调用失败: %v", err)
-			content = fmt.Sprintf("%s暂时无法发言: %v", agent.Name, err)
+		
+		// 如果已经完成最少轮数，可以考虑提前结束的条件
+		// 这里可以根据需要添加更复杂的结束逻辑
+		if round >= minRounds {
+			// 简单的结束条件：如果智能体数量较少，多进行几轮
+			if len(agents) <= 2 && round >= 4 {
+				log.Printf("智能体数量较少，已完成 %d 轮讨论，结束讨论", round)
+				break
+			} else if len(agents) > 2 && round >= minRounds {
+				log.Printf("已完成 %d 轮讨论，结束讨论", round)
+				break
+			}
 		}
-
-		// 创建消息
-		message := model.Message{
-			ID:         uuid.New().String(),
-			AgentID:    agent.ID,
-			AgentName:  agent.Name,
-			Content:    content,
-			Type:       "agent",
-			Timestamp:  time.Now(),
-			ChatRoomID: chatRoomID,
-		}
-
-		// 保存消息到数据库
-		if err := cc.db.Create(&message).Error; err != nil {
-			log.Printf("保存消息失败，聊天室ID: %s, 错误: %v", chatRoomID, err)
-			continue
-		}
-
-		// 广播消息
-		messageJSON, _ := json.Marshal(message)
-		log.Printf("广播智能体消息: %s", string(messageJSON))
-
-		// 延迟一下，模拟真实讨论节奏
-		time.Sleep(2 * time.Second)
 	}
+
+	log.Printf("多轮讨论结束，聊天室ID: %s", chatRoomID)
 
 	// 更新状态为完成
 	chatRoom.Status = "completed"
@@ -329,5 +444,9 @@ func (cc *ChatRoomController) simulateAgentDiscussion(chatRoomID string) {
 		"status": "completed",
 	}
 	statusJSON, _ = json.Marshal(statusUpdate)
-	log.Printf("广播完成状态: %s", string(statusJSON))
+	if cc.wsManager != nil {
+		cc.wsManager.BroadcastToRoom(chatRoomID, statusJSON)
+	} else {
+		log.Printf("WebSocket管理器未初始化，无法广播完成状态: %s", string(statusJSON))
+	}
 }

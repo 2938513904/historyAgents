@@ -9,6 +9,12 @@ let wsConnection = null;
 // 页面初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
+    
+    // 添加头像上传事件监听
+    const avatarInput = document.getElementById('agent-avatar');
+    if (avatarInput) {
+        avatarInput.addEventListener('change', handleAvatarUpload);
+    }
 });
 
 function initializeApp() {
@@ -59,7 +65,7 @@ function switchPage(page) {
 
 // 事件监听器
 function setupEventListeners() {
-    // 智能体管理事件
+    // 历史人物管理事件
     const addAgentBtn = document.getElementById('add-agent-btn');
     if (addAgentBtn) {
         addAgentBtn.addEventListener('click', showAgentModal);
@@ -107,8 +113,8 @@ function loadAgents() {
             renderAgents();
         })
         .catch(error => {
-            console.error('加载智能体失败:', error);
-            showMessage('加载智能体失败', 'error');
+            console.error('加载历史人物失败:', error);
+            showMessage('加载历史人物失败', 'error');
         });
 }
 
@@ -138,14 +144,25 @@ function renderAgents() {
         const agentCard = document.createElement('div');
         agentCard.className = 'agent-card';
         agentCard.innerHTML = `
+            <div class="agent-avatar-large">
+                ${agent.avatar ? `<img src="${agent.avatar}" alt="${agent.name}">` : '<div class="avatar-placeholder">头像</div>'}
+            </div>
             <h3>${agent.name}</h3>
             <div class="agent-role">${agent.role}</div>
-            <div class="agent-personality">${agent.personality}</div>
             <div class="agent-actions">
                 <button class="btn btn-secondary" onclick="editAgent('${agent.id}')">编辑</button>
                 <button class="btn btn-danger" onclick="deleteAgent('${agent.id}')">删除</button>
+                <button class="btn btn-primary" onclick="chatWithAgent('${agent.id}')">对话</button>
             </div>
         `;
+        
+        // 添加卡片点击事件显示详情
+        agentCard.addEventListener('click', function(e) {
+            // 如果点击的是按钮，不触发卡片点击事件
+            if (e.target.tagName === 'BUTTON') return;
+            showAgentDetails(agent.id);
+        });
+        
         agentsList.appendChild(agentCard);
     });
 }
@@ -159,10 +176,14 @@ function renderChatrooms() {
     chatrooms.forEach(chatroom => {
         const chatroomCard = document.createElement('div');
         chatroomCard.className = 'chatroom-card';
+        
+        // 确保主题不为空，如果为空则显示默认文本
+        const displayTopic = chatroom.topic && chatroom.topic.trim() !== '' ? chatroom.topic : '未设置主题';
+        
         chatroomCard.innerHTML = `
-            <h3>${chatroom.topic}</h3>
+            <h3>${displayTopic}</h3>
             <div class="chatroom-status ${chatroom.status}">${chatroom.status}</div>
-            <div class="chatroom-agents-count">${chatroom.agents ? chatroom.agents.length : 0} 个智能体</div>
+            <div class="chatroom-agents-count">${chatroom.agents ? chatroom.agents.length : 0} 个历史人物</div>
             <div class="chatroom-actions">
                 <button class="btn btn-primary" onclick="openChatroom('${chatroom.id}')">进入</button>
                 <button class="btn btn-danger" onclick="deleteChatroom('${chatroom.id}')">删除</button>
@@ -172,23 +193,40 @@ function renderChatrooms() {
     });
 }
 
-// 智能体管理
+// 历史人物管理
 function showAgentModal(agentId = null) {
     const modal = document.getElementById('agent-modal');
     const title = document.getElementById('agent-modal-title');
     const form = document.getElementById('agent-form');
     
+    // 清空头像预览
+    const avatarPreview = document.getElementById('avatar-preview');
+    const avatarData = document.getElementById('agent-avatar-data');
+    if (avatarPreview) avatarPreview.innerHTML = '';
+    if (avatarData) avatarData.value = '';
+    
     if (agentId) {
         const agent = agents.find(a => a.id === agentId);
         if (agent) {
-            title.textContent = '编辑智能体';
+            title.textContent = '编辑历史人物';
             document.getElementById('agent-name').value = agent.name;
             document.getElementById('agent-role').value = agent.role;
             document.getElementById('agent-personality').value = agent.personality;
+            document.getElementById('agent-coze-link').value = agent.cozeLink || '';
             editingAgentId = agentId;
+            
+            // 显示现有头像
+            if (agent.avatar && avatarPreview) {
+                const img = document.createElement('img');
+                img.src = agent.avatar;
+                img.style.maxWidth = '100px';
+                img.style.maxHeight = '100px';
+                avatarPreview.appendChild(img);
+                if (avatarData) avatarData.value = agent.avatar;
+            }
         }
     } else {
-        title.textContent = '添加智能体';
+        title.textContent = '添加历史人物';
         form.reset();
         editingAgentId = null;
     }
@@ -196,46 +234,84 @@ function showAgentModal(agentId = null) {
     modal.style.display = 'block';
 }
 
-function editAgent(agentId) {
-    showAgentModal(agentId);
+// 显示历史人物详情
+function showAgentDetails(agentId) {
+    const agent = agents.find(a => a.id === agentId);
+    if (!agent) return;
+    
+    const modal = document.getElementById('agent-details-modal');
+    const avatar = document.getElementById('details-avatar');
+    const name = document.getElementById('details-name');
+    const role = document.getElementById('details-role');
+    const personality = document.getElementById('details-personality');
+    
+    if (agent.avatar) {
+        avatar.src = agent.avatar;
+        avatar.style.display = 'block';
+    } else {
+        avatar.style.display = 'none';
+    }
+    
+    name.textContent = agent.name;
+    role.textContent = agent.role;
+    personality.textContent = agent.personality || '暂无性格描述';
+    
+    modal.style.display = 'block';
 }
 
-function deleteAgent(agentId) {
-    if (!agentId) {
-        showMessage('无法删除：智能体ID为空', 'error');
+// 处理头像上传
+function handleAvatarUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+        showMessage('请选择图片文件', 'error');
         return;
     }
     
-    if (confirm('确定要删除这个智能体吗？')) {
-        fetch(`/api/agents/${agentId}`, {
-            method: 'DELETE'
-        })
-        .then(response => {
-            if (response.ok) {
-                showMessage('智能体删除成功', 'success');
-                loadAgents();
-            } else {
-                showMessage('删除智能体失败', 'error');
-            }
-        })
-        .catch(error => {
-            console.error('删除智能体失败:', error);
-            showMessage('删除智能体失败', 'error');
-        });
+    // 检查文件大小 (限制为2MB)
+    if (file.size > 2 * 1024 * 1024) {
+        showMessage('图片大小不能超过2MB', 'error');
+        return;
     }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const avatarPreview = document.getElementById('avatar-preview');
+        const avatarData = document.getElementById('agent-avatar-data');
+        
+        if (avatarPreview) {
+            avatarPreview.innerHTML = `<img src="${e.target.result}" style="maxWidth: 100px; maxHeight: 100px;">`;
+        }
+        
+        if (avatarData) {
+            avatarData.value = e.target.result;
+        }
+    };
+    
+    reader.readAsDataURL(file);
 }
 
 function saveAgent(e) {
     e.preventDefault();
     
+    console.log('开始保存历史人物...');
+    
     const agentData = {
         name: document.getElementById('agent-name').value,
         role: document.getElementById('agent-role').value,
-        personality: document.getElementById('agent-personality').value
+        personality: document.getElementById('agent-personality').value,
+        avatar: document.getElementById('agent-avatar-data').value,
+        cozeLink: document.getElementById('agent-coze-link').value
     };
+    
+    console.log('历史人物数据:', agentData);
     
     const url = editingAgentId ? `/api/agents/${editingAgentId}` : '/api/agents';
     const method = editingAgentId ? 'PUT' : 'POST';
+    
+    console.log('请求URL:', url, '方法:', method);
     
     fetch(url, {
         method: method,
@@ -245,37 +321,82 @@ function saveAgent(e) {
         body: JSON.stringify(agentData)
     })
     .then(response => {
+        console.log('保存响应状态:', response.status);
         if (response.ok) {
-            showMessage(editingAgentId ? '智能体更新成功' : '智能体添加成功', 'success');
-            document.getElementById('agent-modal').style.display = 'none';
-            loadAgents();
+            return response.json().then(data => {
+                console.log('保存成功响应:', data);
+                showMessage(editingAgentId ? '历史人物更新成功' : '历史人物添加成功', 'success');
+                document.getElementById('agent-modal').style.display = 'none';
+                loadAgents();
+            });
         } else {
-            showMessage('保存智能体失败', 'error');
+            return response.json().then(data => {
+                console.error('保存失败响应:', data);
+                showMessage(`保存历史人物失败: ${data.error || '未知错误'}`, 'error');
+            }).catch(() => {
+                showMessage(`保存历史人物失败: HTTP ${response.status}`, 'error');
+            });
         }
     })
     .catch(error => {
-        console.error('保存智能体失败:', error);
-        showMessage('保存智能体失败', 'error');
+        console.error('保存历史人物网络错误:', error);
+        showMessage(`保存历史人物失败: ${error.message}`, 'error');
     });
 }
 
-// 聊天室管理
+function editAgent(agentId) {
+    showAgentModal(agentId);
+}
+
+function deleteAgent(agentId) {
+    if (!agentId) {
+        showMessage('无法删除：历史人物ID为空', 'error');
+        return;
+    }
+    
+    if (confirm('确定要删除这个历史人物吗？')) {
+        console.log('正在删除历史人物，ID:', agentId);
+        fetch(`/api/agents/${agentId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            console.log('删除响应状态:', response.status);
+            if (response.ok) {
+                showMessage('历史人物删除成功', 'success');
+                loadAgents();
+            } else {
+                return response.json().then(data => {
+                    console.error('删除失败响应:', data);
+                    showMessage(`删除历史人物失败: ${data.error || '未知错误'}`, 'error');
+                }).catch(() => {
+                    showMessage(`删除历史人物失败: HTTP ${response.status}`, 'error');
+                });
+            }
+        })
+        .catch(error => {
+            console.error('删除历史人物网络错误:', error);
+            showMessage(`删除历史人物失败: ${error.message}`, 'error');
+        });
+    }
+}
+
+// 历史圆桌管理
 function showChatroomModal() {
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3>创建聊天室</h3>
+                <h3>创建圆桌</h3>
                 <span class="close">&times;</span>
             </div>
             <form id="chatroom-form">
                 <div class="form-group">
-                    <label for="chatroom-topic">讨论主题:</label>
-                    <input type="text" id="chatroom-topic" required>
+                    <label for="new-chatroom-topic">讨论主题:</label>
+                    <input type="text" id="new-chatroom-topic" placeholder="请输入讨论主题" required>
                 </div>
                 <div class="form-group">
-                    <label>选择智能体:</label>
+                    <label>选择历史人物:</label>
                     <div id="agent-selection">
                         ${agents.map(agent => `
                             <label class="agent-checkbox">
@@ -315,11 +436,19 @@ function showChatroomModal() {
 }
 
 function createChatroom(modal) {
-    const topic = document.getElementById('chatroom-topic').value;
-    const selectedAgents = Array.from(document.querySelectorAll('input[name="agents"]:checked')).map(cb => cb.value);
+    const topicInput = modal.querySelector('#new-chatroom-topic');
+    const topic = topicInput ? topicInput.value.trim() : '';
+    const selectedAgents = Array.from(modal.querySelectorAll('input[name="agents"]:checked')).map(cb => cb.value);
+    
+    console.log('创建圆桌 - 主题:', topic, '历史人物:', selectedAgents);
+    
+    if (!topic) {
+        showMessage('请输入讨论主题', 'error');
+        return;
+    }
     
     if (selectedAgents.length === 0) {
-        showMessage('请至少选择一个智能体', 'error');
+        showMessage('请至少选择一个历史人物', 'error');
         return;
     }
     
@@ -327,6 +456,8 @@ function createChatroom(modal) {
         topic: topic,
         agents: selectedAgents
     };
+    
+    console.log('发送数据:', chatroomData);
     
     fetch('/api/chatrooms', {
         method: 'POST',
@@ -337,13 +468,14 @@ function createChatroom(modal) {
     })
     .then(response => response.json())
     .then(data => {
-        showMessage('聊天室创建成功', 'success');
+        console.log('服务器响应:', data);
+        showMessage('圆桌创建成功', 'success');
         modal.remove();
         loadChatrooms();
     })
     .catch(error => {
-        console.error('创建聊天室失败:', error);
-        showMessage('创建聊天室失败', 'error');
+        console.error('创建圆桌失败:', error);
+        showMessage('创建圆桌失败', 'error');
     });
 }
 
@@ -354,25 +486,37 @@ function openChatroom(chatroomId) {
     currentChatroomId = chatroomId;
     const modal = document.getElementById('chatroom-modal');
     
-    document.getElementById('chatroom-title').textContent = chatroom.topic;
-    document.getElementById('chatroom-topic').textContent = chatroom.topic;
+    // 确保主题不为空，如果为空则显示默认文本
+    const displayTopic = chatroom.topic && chatroom.topic.trim() !== '' ? chatroom.topic : '未设置主题';
+    
+    document.getElementById('chatroom-title').textContent = displayTopic;
+    document.getElementById('chatroom-topic').textContent = displayTopic;
     document.getElementById('chatroom-status').textContent = chatroom.status || 'pending';
     document.getElementById('chatroom-status').className = chatroom.status || 'pending';
     
-    // 显示参与智能体
+    // 显示参与历史人物
     const agentsContainer = document.getElementById('chatroom-agents');
     agentsContainer.innerHTML = '';
     
     // 确保chatroom.agents是一个数组
     const chatroomAgents = Array.isArray(chatroom.agents) ? chatroom.agents : [];
     
-    chatroomAgents.forEach(agentId => {
-        const agent = agents.find(a => a.id === agentId);
-        if (agent) {
+    chatroomAgents.forEach(agent => {
+        // 如果agent是对象（包含完整信息），直接使用
+        if (typeof agent === 'object' && agent.name && agent.role) {
             const agentTag = document.createElement('span');
             agentTag.className = 'agent-tag';
             agentTag.textContent = `${agent.name} (${agent.role})`;
             agentsContainer.appendChild(agentTag);
+        } else if (typeof agent === 'string') {
+            // 如果agent是ID字符串，从agents数组中查找
+            const foundAgent = agents.find(a => a.id === agent);
+            if (foundAgent) {
+                const agentTag = document.createElement('span');
+                agentTag.className = 'agent-tag';
+                agentTag.textContent = `${foundAgent.name} (${foundAgent.role})`;
+                agentsContainer.appendChild(agentTag);
+            }
         }
     });
     
@@ -434,7 +578,9 @@ function loadChatroomMessages(chatroomId) {
             
             // 更新聊天室信息
             if (data.topic) {
-                document.getElementById('chatroom-topic').textContent = data.topic;
+                const displayTopic = data.topic && data.topic.trim() !== '' ? data.topic : '未设置主题';
+                document.getElementById('chatroom-topic').textContent = displayTopic;
+                document.getElementById('chatroom-title').textContent = displayTopic;
             }
             if (data.status) {
                 const statusElement = document.getElementById('chatroom-status');
@@ -442,7 +588,7 @@ function loadChatroomMessages(chatroomId) {
                 statusElement.className = data.status;
             }
             
-            // 更新参与智能体
+            // 更新参与历史人物
             const agentsContainer = document.getElementById('chatroom-agents');
             if (agentsContainer && data.agents && Array.isArray(data.agents)) {
                 agentsContainer.innerHTML = '';
@@ -495,7 +641,7 @@ function connectWebSocket(chatroomId) {
                 document.getElementById('chatroom-status').textContent = chatroom.status;
                 document.getElementById('chatroom-status').className = chatroom.status;
                 
-                // 更新参与智能体
+                // 更新参与历史人物
                 const agentsContainer = document.getElementById('chatroom-agents');
                 if (agentsContainer) {
                     agentsContainer.innerHTML = '';
@@ -624,21 +770,37 @@ function displayMessage(message) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-
+// 与历史人物对话
+function chatWithAgent(agentId) {
+    const agent = agents.find(a => a.id === agentId);
+    if (!agent) {
+        showMessage('未找到历史人物', 'error');
+        return;
+    }
+    
+    // 如果有coze外链，直接跳转到外链
+    if (agent.cozeLink) {
+        window.open(agent.cozeLink, '_blank');
+        return;
+    }
+    
+    // 如果没有外链，显示提示信息
+    showMessage('该历史人物暂未配置coze外链', 'warning');
+}
 
 // 测试函数
 function testEdit() {
     showAgentModal();
-    document.getElementById('agent-name').value = '测试智能体';
+    document.getElementById('agent-name').value = '测试历史人物';
     document.getElementById('agent-role').value = '测试助手';
-    document.getElementById('agent-personality').value = '这是一个用于测试的智能体';
+    document.getElementById('agent-personality').value = '这是一个用于测试的历史人物';
 }
 
 function testSave() {
     const agentData = {
-        name: '测试智能体',
+        name: '测试历史人物',
         role: '测试助手',
-        personality: '这是一个用于测试的智能体'
+        personality: '这是一个用于测试的历史人物'
     };
     
     fetch('/api/agents', {
@@ -650,7 +812,7 @@ function testSave() {
     })
     .then(response => {
         if (response.ok) {
-            showMessage('测试智能体添加成功', 'success');
+            showMessage('测试历史人物添加成功', 'success');
             loadAgents();
         }
     });

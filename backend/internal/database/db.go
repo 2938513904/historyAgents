@@ -24,9 +24,30 @@ func InitDatabase() error {
 		return fmt.Errorf("连接数据库失败: %v", err)
 	}
 
+	// 获取底层的sql.DB对象
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("获取底层数据库连接失败: %v", err)
+	}
+
+	// 设置连接池参数
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+
 	// 设置数据库编码为UTF-8
-	if err := DB.Exec("SET NAMES utf8mb4").Error; err != nil {
+	if err := DB.Exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci").Error; err != nil {
 		return fmt.Errorf("设置数据库编码失败: %v", err)
+	}
+
+	// 显式设置客户端字符集
+	if err := DB.Exec("SET character_set_client = utf8mb4").Error; err != nil {
+		return fmt.Errorf("设置客户端字符集失败: %v", err)
+	}
+	if err := DB.Exec("SET character_set_results = utf8mb4").Error; err != nil {
+		return fmt.Errorf("设置结果字符集失败: %v", err)
+	}
+	if err := DB.Exec("SET character_set_connection = utf8mb4").Error; err != nil {
+		return fmt.Errorf("设置连接字符集失败: %v", err)
 	}
 
 	// 自动迁移表结构

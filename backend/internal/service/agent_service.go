@@ -53,6 +53,8 @@ func (s *AgentService) UpdateAgent(id string, agent *model.Agent) error {
 	existingAgent.Name = agent.Name
 	existingAgent.Role = agent.Role
 	existingAgent.Personality = agent.Personality
+	existingAgent.Avatar = agent.Avatar
+	existingAgent.CozeLink = agent.CozeLink
 
 	if err := s.db.Save(&existingAgent).Error; err != nil {
 		return err

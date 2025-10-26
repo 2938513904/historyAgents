@@ -3,40 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多智能体聊天室</title>
+    <title>智契古今 史镜群聊</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>多智能体聊天室</h1>
+            <h1>智契古今 史镜群聊</h1>
             <nav>
-            <button id="nav-agents" class="nav-btn active">智能体管理</button>
-            <button id="nav-chatrooms" class="nav-btn">聊天室</button>
+            <button id="nav-agents" class="nav-btn active">历史人物</button>
+            <button id="nav-chatrooms" class="nav-btn">圆桌会议</button>
         </nav>
         </header>
 
         <main>
-            <!-- 智能体管理页面 -->
+            <!-- 历史人物页面 -->
             <div id="agents-page" class="page active">
                 <div class="page-header">
-                    <h2>智能体角色预设</h2>
+                    <h2>历史人物预设</h2>
                     <div class="header-actions">
-                        <button id="add-agent-btn" class="btn btn-primary">添加智能体</button>
-                        <button id="test-edit-btn" class="btn btn-secondary" onclick="testEdit()">测试编辑</button>
-                        <button id="test-save-btn" class="btn btn-secondary" onclick="testSave()">测试保存</button>
+                        <button id="add-agent-btn" class="btn btn-primary">添加历史人物</button>
                     </div>
                 </div>
                 
                 <div id="agents-list" class="agents-grid">
-                    <!-- 智能体列表将在这里动态生成 -->
+                    <!-- 历史人物列表将在这里动态生成 -->
                 </div>
 
-                <!-- 添加/编辑智能体模态框 -->
+                <!-- 添加/编辑历史人物模态框 -->
                 <div id="agent-modal" class="modal">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h3 id="agent-modal-title">添加智能体</h3>
+                            <h3 id="agent-modal-title">添加历史人物</h3>
                             <span class="close">&times;</span>
                         </div>
                         <form id="agent-form">
@@ -50,7 +48,17 @@
                             </div>
                             <div class="form-group">
                                 <label for="agent-personality">性格描述:</label>
-                                <textarea id="agent-personality" rows="4" placeholder="描述智能体的性格特点、行为方式等"></textarea>
+                                <textarea id="agent-personality" rows="4" placeholder="描述历史人物的性格特点、行为方式等"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="agent-avatar">头像:</label>
+                                <input type="file" id="agent-avatar" accept="image/*">
+                                <div id="avatar-preview" style="margin-top: 10px;"></div>
+                                <input type="hidden" id="agent-avatar-data">
+                            </div>
+                            <div class="form-group">
+                                <label for="agent-coze-link">coze人物外链:</label>
+                                <input type="url" id="agent-coze-link" placeholder="输入coze人物外链地址">
                             </div>
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" id="cancel-agent">取消</button>
@@ -59,13 +67,34 @@
                         </form>
                     </div>
                 </div>
+
+                <!-- 历史人物详情模态框 -->
+                <div id="agent-details-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 id="agent-details-title">历史人物详情</h3>
+                            <span class="close">&times;</span>
+                        </div>
+                        <div class="agent-details-content">
+                            <div class="agent-details-avatar">
+                                <img id="details-avatar" src="" alt="">
+                            </div>
+                            <h3 id="details-name"></h3>
+                            <div class="agent-role" id="details-role"></div>
+                            <div class="agent-personality-details">
+                                <h4>性格描述</h4>
+                                <p id="details-personality"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 聊天室页面 -->
             <div id="chatrooms-page" class="page">
                 <div class="page-header">
-                    <h2>聊天室管理</h2>
-                    <button id="add-chatroom-btn" class="btn btn-primary">创建聊天室</button>
+                    <h2>历史圆桌管理</h2>
+                    <button id="add-chatroom-btn" class="btn btn-primary">创建圆桌</button>
                 </div>
                 
                 <div id="chatrooms-list" class="chatrooms-list">
@@ -83,7 +112,7 @@
                             <div class="chatroom-info">
                                 <p><strong>主题:</strong> <span id="chatroom-topic"></span></p>
                                 <p><strong>状态:</strong> <span id="chatroom-status"></span></p>
-                                <p><strong>参与智能体:</strong></p>
+                                <p><strong>参与历史人物:</strong></p>
                                 <div id="chatroom-agents" class="agents-tags"></div>
                             </div>
                             <div class="chat-messages" id="chat-messages">

@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 
 	"multiagent-chat/internal/model"
@@ -55,26 +57,32 @@ func (ac *AgentController) UpdateAgent(c *gin.Context) {
 
 	var agent model.Agent
 	if err := c.ShouldBindJSON(&agent); err != nil {
+		log.Printf("JSON绑定失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	log.Printf("更新智能体请求 - ID: %s, 数据: %+v", id, agent)
+
 	if err := ac.agentService.UpdateAgent(id, &agent); err != nil {
+		log.Printf("更新智能体失败: %v", err)
 		if err.Error() == "record not found" {
 			c.JSON(http.StatusNotFound, gin.H{"error": "智能体不存在"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新智能体失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("更新智能体失败: %v", err)})
 		return
 	}
 
 	// 获取更新后的智能体信息
 	var updatedAgent model.Agent
 	if err := ac.agentService.GetDB().First(&updatedAgent, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取更新后的智能体信息失败"})
+		log.Printf("获取更新后的智能体信息失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("获取更新后的智能体信息失败: %v", err)})
 		return
 	}
 
+	log.Printf("智能体更新成功 - ID: %s", id)
 	c.JSON(http.StatusOK, updatedAgent)
 }
 

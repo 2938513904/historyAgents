@@ -41,9 +41,13 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 		c.HTML(http.StatusOK, "dashscope-test.html", nil)
 	})
 
+	// WebSocket路由
+	wsManager := websocket.NewManager()
+	wsManager.Start()
+
 	// 创建控制器实例
 	agentController := controller.NewAgentController(db)
-	chatRoomController := controller.NewChatRoomController(db)
+	chatRoomController := controller.NewChatRoomController(db, wsManager)
 	apiController := controller.NewAPIController()
 
 	// API路由
@@ -69,10 +73,6 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 		api.POST("/test-connection", apiController.TestAPIConnection)
 		api.POST("/test-dashscope", apiController.TestDashScopeAPI)
 	}
-
-	// WebSocket路由
-	wsManager := websocket.NewManager()
-	wsManager.Start()
 
 	router.GET("/api/ws/:roomId", wsManager.HandleWebSocket)
 
