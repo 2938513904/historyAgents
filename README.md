@@ -2,6 +2,10 @@
 
 一个基于Web的多智能体聊天室应用，支持创建多个AI智能体角色，并在聊天室中进行自动讨论。
 
+## 项目概述
+
+本项目是一个现代化的多智能体聊天室系统，允许用户创建具有不同角色和性格的AI智能体，并在主题聊天室中进行自动化讨论。系统通过调用阿里云DashScope API实现真实的AI对话功能，并通过WebSocket提供实时消息推送。
+
 ## 功能特性
 
 ### 🎯 核心功能
@@ -22,7 +26,8 @@
 - **语言**: Go 1.21+
 - **Web框架**: Gin Web Framework
 - **实时通信**: Gorilla WebSocket
-- **数据存储**: 内存存储（可扩展为数据库）
+- **数据存储**: MySQL数据库
+- **API集成**: 阿里云DashScope API
 
 ### 前端技术
 - **HTML5 + CSS3**: 现代化界面设计
@@ -59,6 +64,8 @@ go run main.go
 
 ## 使用指南
 
+### 1. 访问应用
+打开浏览器访问 http://localhost:8080
 
 ### 2. 创建智能体
 1. 点击顶部导航栏的"智能体管理"
@@ -73,7 +80,7 @@ go run main.go
 1. 点击顶部导航栏的"聊天室"
 2. 点击"创建聊天室"按钮
 3. 输入聊天室主题
-4. 选择参与的智能体（输入智能体ID，用逗号分隔）
+4. 选择参与的智能体（从下拉列表中选择）
 5. 点击"创建"完成聊天室创建
 
 ### 4. 开始讨论
@@ -82,6 +89,10 @@ go run main.go
 3. 点击"开始讨论"按钮
 4. 观察智能体的自动讨论过程
 5. 可以随时点击"停止讨论"结束讨论
+
+### 5. API测试
+1. 点击顶部导航栏的"API测试"进行阿里云API连接测试
+2. 点击"DashScope测试"进行专门的DashScope API测试
 
 ## API接口文档
 
@@ -107,16 +118,85 @@ go run main.go
 ```
 AIagents2.0/
 ├── backend/
-│   ├── main.go          # 后端主程序
-│   └── go.mod          # Go模块文件
+│   ├── main.go              # 后端主程序入口
+│   ├── go.mod               # Go模块文件
+│   ├── go.sum               # Go依赖校验文件
+│   └── internal/
+│       ├── config/          # 配置文件
+│       ├── controller/      # 控制器层
+│       ├── database/        # 数据库初始化
+│       ├── model/           # 数据模型
+│       ├── router/          # 路由配置
+│       ├── service/         # 业务逻辑层
+│       ├── utils/           # 工具函数
+│       └── websocket/       # WebSocket管理
 ├── frontend/
-│   ├── index.html      # 主页面
+│   ├── index.html           # 主页面
+│   ├── test-connection.html # API测试页面
+│   ├── dashscope-test.html  # DashScope测试页面
 │   └── static/
 │       ├── css/
-│       │   └── style.css  # 样式文件
+│       │   └── style.css    # 样式文件
 │       └── js/
-│           └── app.js     # 前端逻辑
-└── README.md           # 项目文档
+│           └── app.js       # 前端逻辑
+└── README.md                # 项目文档
 ```
 
+## 数据库配置
 
+项目使用MySQL数据库存储数据，请确保已安装并运行MySQL服务。
+
+### 数据库连接配置
+在 `backend/internal/database/db.go` 文件中配置数据库连接信息：
+
+```go
+dsn := "root:root@tcp(127.0.0.1:3306)/ai_agents?charset=utf8mb4&parseTime=True&loc=Local"
+```
+
+请根据实际环境修改用户名、密码、主机地址和数据库名称。
+
+## API配置
+
+项目集成阿里云DashScope API，在 `backend/internal/config/config.go` 文件中配置API密钥：
+
+```go
+var HardcodedAPIKey = "your-api-key-here"
+```
+
+请将 `your-api-key-here` 替换为实际的阿里云API密钥。
+
+## 部署说明
+
+1. 确保已安装Go环境（1.21+）和MySQL数据库
+2. 克隆项目代码
+3. 修改数据库连接配置
+4. 设置阿里云API密钥
+5. 运行以下命令启动服务：
+
+```bash
+cd backend
+go build -o main.exe main.go
+./main.exe
+```
+
+6. 打开浏览器访问 http://localhost:8080
+
+## 故障排除
+
+### 常见问题
+
+1. **端口占用**：如果8080端口已被占用，请修改main.go中的端口号或终止占用进程
+2. **数据库连接失败**：检查MySQL服务是否启动，以及数据库连接配置是否正确
+3. **API调用失败**：检查阿里云API密钥是否正确配置，以及网络连接是否正常
+
+### 日志查看
+
+后端服务会输出详细的运行日志，可通过控制台查看错误信息和调试信息。
+
+## 贡献指南
+
+欢迎提交Issue和Pull Request来改进本项目。
+
+## 许可证
+
+本项目采用MIT许可证。
